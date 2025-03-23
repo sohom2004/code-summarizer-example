@@ -37,13 +37,14 @@ class GeminiLLM implements LLM {
         maxLength: options?.maxLength || 500
       };
       
-      // Customize prompt based on detail level
-      let detailPrompt = '';
-      if (summaryOptions.detailLevel === 'low') {
-        detailPrompt = 'Keep it very brief, focusing only on the main purpose.';
-      } else if (summaryOptions.detailLevel === 'high') {
-        detailPrompt = 'Provide a detailed analysis including functions, methods, and how they interact.';
-      }
+      // Customize prompt based on detail level using a mapping object
+      const detailPromptMap = {
+        'low': 'Keep it very brief, focusing only on the main purpose.',
+        'medium': '',
+        'high': 'Provide a detailed analysis including functions, methods, and how they interact.'
+      };
+      
+      const detailPrompt = detailPromptMap[summaryOptions.detailLevel];
       
       const prompt = `Provide an overview summary of the code in this ${language} file.
 ${detailPrompt}
@@ -51,6 +52,7 @@ Keep the summary under ${summaryOptions.maxLength} characters.
 
 ${code}`;
       
+      // Type-safe implementation of AI SDK
       const googleAI = GoogleGenerativeAI({
         apiKey: this.apiKey,
       });
@@ -60,7 +62,8 @@ ${code}`;
         prompt
       });
 
-      return result;
+      // Validate and sanitize result
+      return typeof result === 'string' ? result : "Failed to generate summary.";
     } catch (error) {
       console.error(`Error summarizing with Gemini: ${error instanceof Error ? error.message : String(error)}`);
       return "Failed to generate summary.";
@@ -92,6 +95,10 @@ const extensionToLanguage: Record<string, string> = {
   '.scss': 'SCSS',
   '.less': 'Less',
 };
+
+// Constants
+const MAX_FILE_SIZE_BYTES = 500 * 1024; // 500KB
+const DEFAULT_BATCH_SIZE = 5;
 
 // Always skip these directories
 const skipDirectories = new Set([
@@ -151,7 +158,7 @@ async function findCodeFiles(rootDir: string): Promise<string[]> {
       } else if (entry.isFile()) {
         // Check if the file has a supported extension
         const ext = path.extname(entry.name).toLowerCase();
-        if (ext in extensionToLanguage) {
+        if (ext && ext in extensionToLanguage) {
           allFiles.push(fullPath);
         }
       }
@@ -173,7 +180,7 @@ async function summarizeFile(
   filePath: string, 
   rootDir: string, 
   llm: LLM,
-  maxFileSizeBytes: number = 500 * 1024, // Default to 500KB as a reasonable limit
+  maxFileSizeBytes: number = MAX_FILE_SIZE_BYTES,
   options?: SummaryOptions
 ): Promise<FileSummary> {
   try {
@@ -189,7 +196,11 @@ async function summarizeFile(
 
     const fileContent = await fs.promises.readFile(filePath, 'utf-8');
     const ext = path.extname(filePath).toLowerCase();
-    const language = extensionToLanguage[ext] || ext.slice(1); // Use mapped language or extension without dot
+    
+    // Use the mapped language name or fall back to extension without dot (if ext exists)
+    const language = ext in extensionToLanguage 
+      ? extensionToLanguage[ext] 
+      : (ext && ext.length > 1 ? ext.slice(1) : 'Unknown');
     
     const summary = await llm.summarize(fileContent, language, options);
     const relativePath = path.relative(rootDir, filePath);
@@ -212,7 +223,7 @@ async function summarizeFiles(
   filePaths: string[],
   rootDir: string,
   llm: LLM,
-  batchSize: number = 5, // Process in batches to avoid overwhelming the LLM API
+  batchSize: number = DEFAULT_BATCH_SIZE,
   options?: SummaryOptions
 ): Promise<FileSummary[]> {
   const allSummaries: FileSummary[] = [];
@@ -225,7 +236,7 @@ async function summarizeFiles(
     
     const batchPromises = batch.map(filePath => {
       console.log(`  Summarizing: ${path.relative(rootDir, filePath)}`);
-      return summarizeFile(filePath, rootDir, llm, 500 * 1024, options);
+      return summarizeFile(filePath, rootDir, llm, MAX_FILE_SIZE_BYTES, options);
     });
     
     const batchResults = await Promise.all(batchPromises);
@@ -264,7 +275,10 @@ async function main() {
       .parse(process.argv);
 
     const options = program.opts();
-    const [rootDir, outputFile] = program.processedArgs;
+    // Extract positional arguments safely
+    const args = program.args;
+    const rootDir = args[0] || process.cwd();
+    const outputFile = args[1] || 'summaries.txt';
     
     // Validate detail level
     if (!['low', 'medium', 'high'].includes(options.detail)) {
@@ -337,7 +351,9 @@ export {
   extensionToLanguage,
   skipDirectories,
   LLM,
-  FileSummary
+  FileSummary,
+  MAX_FILE_SIZE_BYTES,
+  DEFAULT_BATCH_SIZE
 };
 
 // Only run main when file is executed directly, not when imported

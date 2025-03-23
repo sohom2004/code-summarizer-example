@@ -73,11 +73,11 @@ describe('Mock Codebase Integration Tests', () => {
     expect(highDetailSummaries[0].summary).toBe('Mocked summary for testing');
     
     // Verify the options were passed correctly
-    const { generateText } = require('ai');
-    const lowDetailCall = generateText.mock.calls.find(call => 
+    // Use the already imported generateText from line 4
+    const lowDetailCall = (generateText as jest.Mock).mock.calls.find(call => 
       call[0].prompt.includes('Keep it very brief')
     );
-    const highDetailCall = generateText.mock.calls.find(call => 
+    const highDetailCall = (generateText as jest.Mock).mock.calls.find(call => 
       call[0].prompt.includes('detailed analysis')
     );
     

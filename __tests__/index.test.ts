@@ -46,7 +46,8 @@ import {
   extensionToLanguage,
   skipDirectories,
   LLM,
-  FileSummary
+  FileSummary,
+  MAX_FILE_SIZE_BYTES
 } from '../index';
 import { generateText } from 'ai';
 
@@ -179,8 +180,11 @@ describe('Code Summarizer', () => {
     it('should handle files that are too large', async () => {
       (fs.promises.stat as jest.Mock).mockResolvedValue({ size: 1000 * 1024 }); // 1MB
       
-      const llm = { summarize: jest.fn() };
-      const result = await summarizeFile('/test/big-file.js', '/test', llm as unknown as LLM, 500 * 1024);
+      // Create a properly typed mock
+      const llm: LLM = { 
+        summarize: jest.fn().mockResolvedValue("Mock summary") 
+      };
+      const result = await summarizeFile('/test/big-file.js', '/test', llm, MAX_FILE_SIZE_BYTES);
       
       expect(llm.summarize).not.toHaveBeenCalled();
       expect(result.summary).toBe('File is too large to summarize.');
@@ -190,8 +194,8 @@ describe('Code Summarizer', () => {
       (fs.promises.stat as jest.Mock).mockResolvedValue({ size: 100 * 1024 }); // 100KB
       (fs.promises.readFile as jest.Mock).mockResolvedValue('const test = 123;');
       
-      const llm = { summarize: jest.fn().mockResolvedValue('A simple test file') };
-      const result = await summarizeFile('/test/small-file.js', '/test', llm as unknown as LLM);
+      const llm: LLM = { summarize: jest.fn().mockResolvedValue('A simple test file') };
+      const result = await summarizeFile('/test/small-file.js', '/test', llm);
       
       expect(llm.summarize).toHaveBeenCalledWith('const test = 123;', 'JavaScript', undefined);
       expect(result.summary).toBe('A simple test file');
@@ -206,8 +210,8 @@ describe('Code Summarizer', () => {
         maxLength: 200
       };
       
-      const llm = { summarize: jest.fn().mockResolvedValue('A simple test file') };
-      await summarizeFile('/test/small-file.js', '/test', llm as unknown as LLM, 500 * 1024, options);
+      const llm: LLM = { summarize: jest.fn().mockResolvedValue('A simple test file') };
+      await summarizeFile('/test/small-file.js', '/test', llm, MAX_FILE_SIZE_BYTES, options);
       
       expect(llm.summarize).toHaveBeenCalledWith('const test = 123;', 'JavaScript', options);
     });
@@ -224,13 +228,16 @@ describe('Code Summarizer', () => {
         '/test/file6.js',
       ];
       
-      // Mock summarizeFile to return a predictable result
-      jest.spyOn(global, 'summarizeFile' as any).mockImplementation((filePath) => {
+      // Create a mock implementation for summarizeFile
+      const mockSummarizeFile = jest.fn().mockImplementation((filePath, rootDir) => {
         return Promise.resolve({
-          relativePath: path.relative('/test', filePath),
+          relativePath: path.relative(rootDir, filePath),
           summary: `Summary of ${path.basename(filePath)}`
         });
       });
+      
+      // Replace the imported function with our mock
+      jest.spyOn(require('../index'), 'summarizeFile').mockImplementation(mockSummarizeFile);
       
       const llm = new GeminiLLM('test-api-key');
       const result = await summarizeFiles(mockFilePaths, '/test', llm, 2); // Batch size of 2
@@ -240,7 +247,7 @@ describe('Code Summarizer', () => {
       expect(result[0].summary).toBe('Summary of file1.js');
       
       // Should have processed in 3 batches (for 6 files with batch size 2)
-      expect(global.summarizeFile).toHaveBeenCalledTimes(6);
+      expect(mockSummarizeFile).toHaveBeenCalledTimes(6);
     });
   });
 
