@@ -1,11 +1,11 @@
 # Code Summarizer Development Guidelines
 
 ## Build and Test Commands
-- Build: `pnpm build` (runs TypeScript compiler)
-- Run dev: `pnpm dev` (executes the program with tsx)
-- Run all tests: `pnpm test` (runs Vitest)
-- Run single test: `pnpm test -- -t "test name pattern"` (e.g., `pnpm test -- -t "should find code files"`)
-- Test with coverage: `pnpm test --coverage`
+- Build: `npm run build` (runs TypeScript compiler)
+- Run dev: `npm run dev` (executes the program with tsx)
+- Run all tests: `npm test` (runs Vitest)
+- Run single test: `npm test -- -t "test name pattern"` (e.g., `npm test -- -t "should find code files"`)
+- Test with coverage: `npm test --coverage`
 
 ## Code Style
 
