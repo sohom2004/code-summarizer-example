@@ -5,13 +5,20 @@ import dotenv from 'dotenv';
 import { GoogleGenerativeAI } from '@ai-sdk/google-generative-ai';
 import { generateText } from 'ai';
 import ignore from 'ignore';
+import { Command } from 'commander';
 
 // Load environment variables
 dotenv.config();
 
+// Interface for summary options
+interface SummaryOptions {
+  detailLevel: 'low' | 'medium' | 'high';
+  maxLength: number; // Maximum length in characters
+}
+
 // Interface for LLM implementations
 interface LLM {
-  summarize(code: string, language: string): Promise<string>;
+  summarize(code: string, language: string, options?: SummaryOptions): Promise<string>;
 }
 
 // Gemini Flash 2.0 implementation
@@ -22,9 +29,27 @@ class GeminiLLM implements LLM {
     this.apiKey = apiKey;
   }
 
-  async summarize(code: string, language: string): Promise<string> {
+  async summarize(code: string, language: string, options?: SummaryOptions): Promise<string> {
     try {
-      const prompt = `Provide an overview summary of the code in this ${language} file:\n\n${code}`;
+      // Default options
+      const summaryOptions: SummaryOptions = {
+        detailLevel: options?.detailLevel || 'medium',
+        maxLength: options?.maxLength || 500
+      };
+      
+      // Customize prompt based on detail level
+      let detailPrompt = '';
+      if (summaryOptions.detailLevel === 'low') {
+        detailPrompt = 'Keep it very brief, focusing only on the main purpose.';
+      } else if (summaryOptions.detailLevel === 'high') {
+        detailPrompt = 'Provide a detailed analysis including functions, methods, and how they interact.';
+      }
+      
+      const prompt = `Provide an overview summary of the code in this ${language} file.
+${detailPrompt}
+Keep the summary under ${summaryOptions.maxLength} characters.
+
+${code}`;
       
       const googleAI = GoogleGenerativeAI({
         apiKey: this.apiKey,
@@ -148,7 +173,8 @@ async function summarizeFile(
   filePath: string, 
   rootDir: string, 
   llm: LLM,
-  maxFileSizeBytes: number = 500 * 1024 // Default to 500KB as a reasonable limit
+  maxFileSizeBytes: number = 500 * 1024, // Default to 500KB as a reasonable limit
+  options?: SummaryOptions
 ): Promise<FileSummary> {
   try {
     // Check file size first
@@ -165,7 +191,7 @@ async function summarizeFile(
     const ext = path.extname(filePath).toLowerCase();
     const language = extensionToLanguage[ext] || ext.slice(1); // Use mapped language or extension without dot
     
-    const summary = await llm.summarize(fileContent, language);
+    const summary = await llm.summarize(fileContent, language, options);
     const relativePath = path.relative(rootDir, filePath);
     
     return {
@@ -186,7 +212,8 @@ async function summarizeFiles(
   filePaths: string[],
   rootDir: string,
   llm: LLM,
-  batchSize: number = 5 // Process in batches to avoid overwhelming the LLM API
+  batchSize: number = 5, // Process in batches to avoid overwhelming the LLM API
+  options?: SummaryOptions
 ): Promise<FileSummary[]> {
   const allSummaries: FileSummary[] = [];
   
@@ -198,7 +225,7 @@ async function summarizeFiles(
     
     const batchPromises = batch.map(filePath => {
       console.log(`  Summarizing: ${path.relative(rootDir, filePath)}`);
-      return summarizeFile(filePath, rootDir, llm);
+      return summarizeFile(filePath, rootDir, llm, 500 * 1024, options);
     });
     
     const batchResults = await Promise.all(batchPromises);
@@ -221,48 +248,35 @@ async function writeSummariesToFile(
   console.log(`Summaries written to ${outputPath}`);
 }
 
-// Print help message
-function printHelp() {
-  console.log(`
-Code Summarizer - A tool to summarize code files using Gemini Flash 2.0
-
-Usage:
-  pnpm tsx index.ts [rootDir] [outputFile]
-
-Arguments:
-  rootDir     The root directory to scan for code files (default: current directory)
-  outputFile  The file to write summaries to (default: summaries.txt)
-
-Environment Variables:
-  GOOGLE_API_KEY  The Google AI API key (required)
-
-Examples:
-  # Summarize code in the current directory
-  pnpm tsx index.ts
-
-  # Summarize code in a specific directory
-  pnpm tsx index.ts /path/to/codebase
-
-  # Specify both directory and output file
-  pnpm tsx index.ts /path/to/codebase output.txt
-`);
-}
-
 // Main function
 async function main() {
   try {
-    // Parse command-line arguments
-    const args = process.argv.slice(2);
+    const program = new Command();
     
-    // Handle help flag
-    if (args.includes('-h') || args.includes('--help')) {
-      printHelp();
-      return;
+    program
+      .name('code-summarizer')
+      .description('A tool to summarize code files using Gemini Flash 2.0')
+      .argument('[rootDir]', 'Root directory to scan', process.cwd())
+      .argument('[outputFile]', 'Output file for summaries', 'summaries.txt')
+      .option('-d, --detail <level>', 'Detail level (low, medium, high)', 'medium')
+      .option('-l, --max-length <number>', 'Maximum summary length in characters', '500')
+      .helpOption('-h, --help', 'Display help information')
+      .parse(process.argv);
+
+    const options = program.opts();
+    const [rootDir, outputFile] = program.processedArgs;
+    
+    // Validate detail level
+    if (!['low', 'medium', 'high'].includes(options.detail)) {
+      throw new Error(`Invalid detail level: ${options.detail}. Use 'low', 'medium', or 'high'.`);
     }
-    
-    const rootDir = args[0] || process.cwd();
-    const outputFile = args[1] || 'summaries.txt';
-    
+
+    // Validate max length
+    const maxLength = parseInt(options.maxLength);
+    if (isNaN(maxLength) || maxLength <= 0) {
+      throw new Error(`Invalid max length: ${options.maxLength}. Use a positive number.`);
+    }
+
     // Validate the root directory
     if (!fs.existsSync(rootDir) || !fs.statSync(rootDir).isDirectory()) {
       throw new Error(`Invalid directory: ${rootDir}`);
@@ -270,6 +284,8 @@ async function main() {
     
     console.log(`Scanning directory: ${rootDir}`);
     console.log(`Output file: ${outputFile}`);
+    console.log(`Detail level: ${options.detail}`);
+    console.log(`Max length: ${maxLength}`);
     
     // Check if API key is available
     const apiKey = process.env.GOOGLE_API_KEY;
@@ -290,9 +306,15 @@ async function main() {
       return;
     }
     
+    // Create summary options
+    const summaryOptions: SummaryOptions = {
+      detailLevel: options.detail as 'low' | 'medium' | 'high',
+      maxLength: maxLength
+    };
+    
     // Summarize the files
     console.log('Generating summaries...');
-    const summaries = await summarizeFiles(codeFiles, rootDir, llm);
+    const summaries = await summarizeFiles(codeFiles, rootDir, llm, 5, summaryOptions);
     
     // Write summaries to the output file
     await writeSummariesToFile(summaries, outputFile);
@@ -304,5 +326,21 @@ async function main() {
   }
 }
 
-// Run the main function
-main();
+// Export for testing
+export {
+  findCodeFiles,
+  summarizeFile,
+  summarizeFiles,
+  writeSummariesToFile,
+  GeminiLLM,
+  SummaryOptions,
+  extensionToLanguage,
+  skipDirectories,
+  LLM,
+  FileSummary
+};
+
+// Only run main when file is executed directly, not when imported
+if (require.main === module) {
+  main();
+}
