@@ -1,16 +1,19 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import { jest } from '@jest/globals';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { findCodeFiles, GeminiLLM, summarizeFiles, SummaryOptions } from '../index';
 
 // Only mock the generateText function, not the actual file system operations
-jest.mock('ai', () => ({
-  generateText: jest.fn().mockResolvedValue('Mocked summary for testing')
+vi.mock('ai', () => ({
+  generateText: vi.fn().mockResolvedValue('Mocked summary for testing')
 }));
 
-jest.mock('@ai-sdk/google-generative-ai', () => ({
-  GoogleGenerativeAI: jest.fn().mockReturnValue(jest.fn())
+vi.mock('@ai-sdk/google-generative-ai', () => ({
+  GoogleGenerativeAI: vi.fn().mockReturnValue(vi.fn())
 }));
+
+// Import after mocking
+import { generateText } from 'ai';
 
 // This test uses actual file operations on the mock codebase
 describe('Mock Codebase Integration Tests', () => {
@@ -73,11 +76,14 @@ describe('Mock Codebase Integration Tests', () => {
     expect(highDetailSummaries[0].summary).toBe('Mocked summary for testing');
     
     // Verify the options were passed correctly
-    // Use the already imported generateText from line 4
-    const lowDetailCall = (generateText as jest.Mock).mock.calls.find(call => 
+    const generateTextMock = generateText as unknown as ReturnType<typeof vi.fn>;
+    const mockCalls = generateTextMock.mock.calls;
+    
+    // Find calls that include specific detail levels in their prompts
+    const lowDetailCall = mockCalls.find(call => 
       call[0].prompt.includes('Keep it very brief')
     );
-    const highDetailCall = (generateText as jest.Mock).mock.calls.find(call => 
+    const highDetailCall = mockCalls.find(call => 
       call[0].prompt.includes('detailed analysis')
     );
     

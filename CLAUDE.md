@@ -3,7 +3,7 @@
 ## Build and Test Commands
 - Build: `pnpm build` (runs TypeScript compiler)
 - Run dev: `pnpm dev` (executes the program with tsx)
-- Run all tests: `pnpm test`
+- Run all tests: `pnpm test` (runs Vitest)
 - Run single test: `pnpm test -- -t "test name pattern"` (e.g., `pnpm test -- -t "should find code files"`)
 - Test with coverage: `pnpm test --coverage`
 

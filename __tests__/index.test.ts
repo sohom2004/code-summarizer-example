@@ -1,38 +1,38 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 // Mock dependencies
-jest.mock('fs', () => ({
-  ...jest.requireActual('fs'),
+vi.mock('fs', () => ({
+  ...vi.importActual('fs'),
   promises: {
-    readdir: jest.fn(),
-    readFile: jest.fn(),
-    writeFile: jest.fn(),
-    stat: jest.fn(),
+    readdir: vi.fn(),
+    readFile: vi.fn(),
+    writeFile: vi.fn(),
+    stat: vi.fn(),
   },
-  existsSync: jest.fn(),
-  statSync: jest.fn(),
-  readFileSync: jest.fn(),
+  existsSync: vi.fn(),
+  statSync: vi.fn(),
+  readFileSync: vi.fn(),
 }));
 
-jest.mock('@ai-sdk/google-generative-ai', () => ({
-  GoogleGenerativeAI: jest.fn().mockReturnValue(jest.fn()),
+vi.mock('@ai-sdk/google-generative-ai', () => ({
+  GoogleGenerativeAI: vi.fn().mockReturnValue(vi.fn()),
 }));
 
-jest.mock('ai', () => ({
-  generateText: jest.fn(),
+vi.mock('ai', () => ({
+  generateText: vi.fn(),
 }));
 
-jest.mock('ignore', () => {
-  return jest.fn().mockReturnValue({
-    add: jest.fn().mockReturnThis(),
-    ignores: jest.fn().mockReturnValue(false),
+vi.mock('ignore', () => {
+  return vi.fn().mockReturnValue({
+    add: vi.fn().mockReturnThis(),
+    ignores: vi.fn().mockReturnValue(false),
   });
 });
 
-jest.mock('dotenv', () => ({
-  config: jest.fn(),
+vi.mock('dotenv', () => ({
+  config: vi.fn(),
 }));
 
 // Import after mocking
@@ -53,7 +53,7 @@ import { generateText } from 'ai';
 
 describe('Code Summarizer', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     process.env.GOOGLE_API_KEY = 'test-api-key';
   });
 
@@ -70,13 +70,13 @@ describe('Code Summarizer', () => {
       ];
       
       // Mock fs methods
-      (fs.promises.readdir as jest.Mock).mockImplementation((dir) => {
+      (fs.promises.readdir as unknown as ReturnType<typeof vi.fn>).mockImplementation((dir) => {
         if (dir === '/test') return Promise.resolve(mockFiles);
         if (dir === '/test/utils') return Promise.resolve(mockSubFiles);
         return Promise.resolve([]);
       });
       
-      (fs.existsSync as jest.Mock).mockReturnValue(false); // No .gitignore
+      (fs.existsSync as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false); // No .gitignore
       
       const files = await findCodeFiles('/test');
       
@@ -91,14 +91,14 @@ describe('Code Summarizer', () => {
         { name: 'ignored.js', isDirectory: () => false, isFile: () => true },
       ];
       
-      (fs.promises.readdir as jest.Mock).mockResolvedValue(mockFiles);
-      (fs.existsSync as jest.Mock).mockReturnValue(true); // Has .gitignore
-      (fs.readFileSync as jest.Mock).mockReturnValue('ignored.js');
+      (fs.promises.readdir as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(mockFiles);
+      (fs.existsSync as unknown as ReturnType<typeof vi.fn>).mockReturnValue(true); // Has .gitignore
+      (fs.readFileSync as unknown as ReturnType<typeof vi.fn>).mockReturnValue('ignored.js');
       
       // Mock ignore to actually ignore the file
-      const mockIgnores = jest.fn().mockImplementation((path) => path.includes('ignored'));
+      const mockIgnores = vi.fn().mockImplementation((path) => path.includes('ignored'));
       require('ignore').mockReturnValue({
-        add: jest.fn().mockReturnThis(),
+        add: vi.fn().mockReturnThis(),
         ignores: mockIgnores,
       });
       
@@ -115,12 +115,12 @@ describe('Code Summarizer', () => {
         { name: 'node_modules', isDirectory: () => true, isFile: () => false },
       ];
       
-      (fs.promises.readdir as jest.Mock).mockImplementation((dir) => {
+      (fs.promises.readdir as unknown as ReturnType<typeof vi.fn>).mockImplementation((dir) => {
         if (dir === '/test') return Promise.resolve(mockFiles);
         return Promise.resolve([]);
       });
       
-      (fs.existsSync as jest.Mock).mockReturnValue(false); // No .gitignore
+      (fs.existsSync as unknown as ReturnType<typeof vi.fn>).mockReturnValue(false); // No .gitignore
       
       const files = await findCodeFiles('/test');
       
@@ -133,7 +133,7 @@ describe('Code Summarizer', () => {
   describe('GeminiLLM', () => {
     it('should respect summary options', async () => {
       // Mock implementation
-      (generateText as jest.Mock).mockResolvedValue('Mocked summary');
+      (generateText as unknown as ReturnType<typeof vi.fn>).mockResolvedValue('Mocked summary');
       
       const llm = new GeminiLLM('test-api-key');
       const options: SummaryOptions = {
@@ -145,7 +145,7 @@ describe('Code Summarizer', () => {
       
       // Check if generateText was called with the right parameters
       expect(generateText).toHaveBeenCalled();
-      const prompt = (generateText as jest.Mock).mock.calls[0][0].prompt;
+      const prompt = (generateText as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0].prompt;
       
       // Verify options were used in prompt
       expect(prompt).toContain('detailed analysis');
@@ -153,7 +153,7 @@ describe('Code Summarizer', () => {
     });
     
     it('should handle API errors gracefully', async () => {
-      (generateText as jest.Mock).mockRejectedValue(new Error('API error'));
+      (generateText as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('API error'));
       
       const llm = new GeminiLLM('test-api-key');
       const result = await llm.summarize('function test() {}', 'JavaScript');
@@ -162,12 +162,12 @@ describe('Code Summarizer', () => {
     });
 
     it('should use default options when none provided', async () => {
-      (generateText as jest.Mock).mockResolvedValue('Default summary');
+      (generateText as unknown as ReturnType<typeof vi.fn>).mockResolvedValue('Default summary');
       
       const llm = new GeminiLLM('test-api-key');
       await llm.summarize('function test() {}', 'JavaScript');
       
-      const prompt = (generateText as jest.Mock).mock.calls[0][0].prompt;
+      const prompt = (generateText as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0].prompt;
       
       // Should not contain detail level specific text
       expect(prompt).not.toContain('very brief');
@@ -178,11 +178,11 @@ describe('Code Summarizer', () => {
 
   describe('summarizeFile', () => {
     it('should handle files that are too large', async () => {
-      (fs.promises.stat as jest.Mock).mockResolvedValue({ size: 1000 * 1024 }); // 1MB
+      (fs.promises.stat as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ size: 1000 * 1024 }); // 1MB
       
       // Create a properly typed mock
       const llm: LLM = { 
-        summarize: jest.fn().mockResolvedValue("Mock summary") 
+        summarize: vi.fn().mockResolvedValue("Mock summary") 
       };
       const result = await summarizeFile('/test/big-file.js', '/test', llm, MAX_FILE_SIZE_BYTES);
       
@@ -191,10 +191,10 @@ describe('Code Summarizer', () => {
     });
     
     it('should summarize files of acceptable size', async () => {
-      (fs.promises.stat as jest.Mock).mockResolvedValue({ size: 100 * 1024 }); // 100KB
-      (fs.promises.readFile as jest.Mock).mockResolvedValue('const test = 123;');
+      (fs.promises.stat as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ size: 100 * 1024 }); // 100KB
+      (fs.promises.readFile as unknown as ReturnType<typeof vi.fn>).mockResolvedValue('const test = 123;');
       
-      const llm: LLM = { summarize: jest.fn().mockResolvedValue('A simple test file') };
+      const llm: LLM = { summarize: vi.fn().mockResolvedValue('A simple test file') };
       const result = await summarizeFile('/test/small-file.js', '/test', llm);
       
       expect(llm.summarize).toHaveBeenCalledWith('const test = 123;', 'JavaScript', undefined);
@@ -202,15 +202,15 @@ describe('Code Summarizer', () => {
     });
     
     it('should pass options to LLM', async () => {
-      (fs.promises.stat as jest.Mock).mockResolvedValue({ size: 100 * 1024 });
-      (fs.promises.readFile as jest.Mock).mockResolvedValue('const test = 123;');
+      (fs.promises.stat as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ size: 100 * 1024 });
+      (fs.promises.readFile as unknown as ReturnType<typeof vi.fn>).mockResolvedValue('const test = 123;');
       
       const options: SummaryOptions = {
         detailLevel: 'low',
         maxLength: 200
       };
       
-      const llm: LLM = { summarize: jest.fn().mockResolvedValue('A simple test file') };
+      const llm: LLM = { summarize: vi.fn().mockResolvedValue('A simple test file') };
       await summarizeFile('/test/small-file.js', '/test', llm, MAX_FILE_SIZE_BYTES, options);
       
       expect(llm.summarize).toHaveBeenCalledWith('const test = 123;', 'JavaScript', options);
@@ -229,7 +229,7 @@ describe('Code Summarizer', () => {
       ];
       
       // Create a mock implementation for summarizeFile
-      const mockSummarizeFile = jest.fn().mockImplementation((filePath, rootDir) => {
+      const mockSummarizeFile = vi.fn().mockImplementation((filePath, rootDir) => {
         return Promise.resolve({
           relativePath: path.relative(rootDir, filePath),
           summary: `Summary of ${path.basename(filePath)}`
@@ -237,7 +237,7 @@ describe('Code Summarizer', () => {
       });
       
       // Replace the imported function with our mock
-      jest.spyOn(require('../index'), 'summarizeFile').mockImplementation(mockSummarizeFile);
+      vi.spyOn(await import('../index'), 'summarizeFile').mockImplementation(mockSummarizeFile);
       
       const llm = new GeminiLLM('test-api-key');
       const result = await summarizeFiles(mockFilePaths, '/test', llm, 2); // Batch size of 2
