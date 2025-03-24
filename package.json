@@ -4,24 +4,30 @@
   "description": "Command-line tool to summarize code files using Gemini Flash 2.0",
   "main": "dist/index.js",
   "type": "module",
+  "bin": {
+    "code-summarizer": "dist/bin/cli.js"
+  },
   "scripts": {
     "build": "tsc",
     "start": "tsx index.ts",
     "dev": "tsx index.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:setup": "tsx src/test-setup.ts"
   },
   "dependencies": {
-    "ai": "^2.0.0",
     "@google/generative-ai": "^0.24.0",
+    "@modelcontextprotocol/sdk": "^1.7.0",
+    "ai": "^2.0.0",
     "commander": "^10.0.0",
+    "conf": "^13.1.0",
     "dotenv": "^16.0.0",
     "ignore": "^5.2.0",
     "zod": "^3.20.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "vitest": "^1.6.1",
     "tsx": "^3.12.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^1.6.1"
   }
 }

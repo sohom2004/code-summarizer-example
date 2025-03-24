@@ -1,259 +1,32 @@
 // index.ts
-import * as fs from 'fs';
-import * as path from 'path';
 import dotenv from 'dotenv';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Command } from 'commander';
-
-// Import ignore with require to resolve TypeScript issues
-// @ts-ignore
-const ignoreLib = require('ignore');
 
 // Load environment variables
 dotenv.config();
 
-// Interface for summary options
-interface SummaryOptions {
-  detailLevel: 'low' | 'medium' | 'high';
-  maxLength: number; // Maximum length in characters
-}
+// Import core summarizer functionality
+import { GeminiLLM } from './src/summarizer/llm.js';
+import { 
+  findCodeFiles, 
+  summarizeFile, 
+  summarizeFiles, 
+  writeSummariesToFile 
+} from './src/summarizer/files.js';
+import { SummaryOptions, MAX_FILE_SIZE_BYTES, DEFAULT_BATCH_SIZE } from './src/summarizer/types.js';
 
-// Interface for LLM implementations
-interface LLM {
-  summarize(code: string, language: string, options?: SummaryOptions): Promise<string>;
-}
+// Import MCP server
+import { startServer } from './src/mcp/server.js';
 
-// Gemini Flash 2.0 implementation
-class GeminiLLM implements LLM {
-  private apiKey: string;
-
-  constructor(apiKey: string) {
-    this.apiKey = apiKey;
-  }
-
-  async summarize(code: string, language: string, options?: SummaryOptions): Promise<string> {
-    try {
-      // Default options
-      const summaryOptions: SummaryOptions = {
-        detailLevel: options?.detailLevel || 'medium',
-        maxLength: options?.maxLength || 500
-      };
-      
-      // Customize prompt based on detail level using a mapping object
-      const detailPromptMap = {
-        'low': 'Keep it very brief, focusing only on the main purpose.',
-        'medium': '',
-        'high': 'Provide a detailed analysis including functions, methods, and how they interact.'
-      };
-      
-      const detailPrompt = detailPromptMap[summaryOptions.detailLevel];
-      
-      const prompt = `Provide an overview summary of the code in this ${language} file.
-${detailPrompt}
-Keep the summary under ${summaryOptions.maxLength} characters.
-
-${code}`;
-      
-      // Initialize the Google Generative AI client
-      const genAI = new GoogleGenerativeAI(this.apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-      
-      const result = await model.generateContent(prompt);
-      return result.response.text() || "Failed to generate summary.";
-    } catch (error) {
-      console.error(`Error summarizing with Gemini: ${error instanceof Error ? error.message : String(error)}`);
-      return "Failed to generate summary.";
-    }
-  }
-}
-
-// Map file extensions to language names
-const extensionToLanguage: Record<string, string> = {
-  '.ts': 'TypeScript',
-  '.js': 'JavaScript',
-  '.jsx': 'JavaScript (React)',
-  '.tsx': 'TypeScript (React)',
-  '.py': 'Python',
-  '.java': 'Java',
-  '.cpp': 'C++',
-  '.c': 'C',
-  '.go': 'Go',
-  '.rb': 'Ruby',
-  '.php': 'PHP',
-  '.cs': 'C#',
-  '.swift': 'Swift',
-  '.rs': 'Rust',
-  '.kt': 'Kotlin',
-  '.scala': 'Scala',
-  '.vue': 'Vue.js',
-  '.html': 'HTML',
-  '.css': 'CSS',
-  '.scss': 'SCSS',
-  '.less': 'Less',
-};
-
-// Constants
-const MAX_FILE_SIZE_BYTES = 500 * 1024; // 500KB
-const DEFAULT_BATCH_SIZE = 5;
-
-// Always skip these directories
-const skipDirectories = new Set([
-  'node_modules',
-  'dist',
-  'build',
-  '.git',
-  'out',
-  'coverage',
-  '.next',
-  '.nuxt',
-  'bin',
-  'obj',
-  'target',
-  'vendor',
-  'venv',
-  '.venv',
-  'env',
-  '.env',
-  '__pycache__',
-]);
-
-// Find all code files in a directory
-async function findCodeFiles(rootDir: string): Promise<string[]> {
-  // Check if .gitignore exists
-  let gitignoreFilter: any = null;
-  const gitignorePath = path.join(rootDir, '.gitignore');
-  
-  if (fs.existsSync(gitignorePath)) {
-    const gitignoreContent = fs.readFileSync(gitignorePath, 'utf-8');
-    gitignoreFilter = ignoreLib().add(gitignoreContent);
-  }
-  
-  const allFiles: string[] = [];
-  
-  // Recursive function to scan directories
-  async function scanDirectory(dir: string): Promise<void> {
-    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-    
-    for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name);
-      const relativePath = path.relative(rootDir, fullPath);
-      
-      // Skip if matched by .gitignore
-      if (gitignoreFilter && gitignoreFilter.ignores(relativePath)) {
-        continue;
-      }
-      
-      if (entry.isDirectory()) {
-        // Skip directories in the skip list
-        if (skipDirectories.has(entry.name)) {
-          continue;
-        }
-        
-        // Recursively scan subdirectories
-        await scanDirectory(fullPath);
-      } else if (entry.isFile()) {
-        // Check if the file has a supported extension
-        const ext = path.extname(entry.name).toLowerCase();
-        if (ext && ext in extensionToLanguage) {
-          allFiles.push(fullPath);
-        }
-      }
-    }
-  }
-  
-  await scanDirectory(rootDir);
-  return allFiles;
-}
-
-// Interface for file summary
-interface FileSummary {
-  relativePath: string;
-  summary: string;
-}
-
-// Summarize a single file
-async function summarizeFile(
-  filePath: string, 
-  rootDir: string, 
-  llm: LLM,
-  maxFileSizeBytes: number = MAX_FILE_SIZE_BYTES,
-  options?: SummaryOptions
-): Promise<FileSummary> {
-  try {
-    // Check file size first
-    const stats = await fs.promises.stat(filePath);
-    if (stats.size > maxFileSizeBytes) {
-      console.warn(`File ${filePath} is too large (${(stats.size / 1024).toFixed(2)}KB). Skipping.`);
-      return {
-        relativePath: path.relative(rootDir, filePath),
-        summary: "File is too large to summarize."
-      };
-    }
-
-    const fileContent = await fs.promises.readFile(filePath, 'utf-8');
-    const ext = path.extname(filePath).toLowerCase();
-    
-    // Use the mapped language name or fall back to extension without dot (if ext exists)
-    const language = ext in extensionToLanguage 
-      ? extensionToLanguage[ext] 
-      : (ext && ext.length > 1 ? ext.slice(1) : 'Unknown');
-    
-    const summary = await llm.summarize(fileContent, language, options);
-    const relativePath = path.relative(rootDir, filePath);
-    
-    return {
-      relativePath,
-      summary
-    };
-  } catch (error) {
-    console.error(`Error processing file ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
-    return {
-      relativePath: path.relative(rootDir, filePath),
-      summary: "Failed to summarize this file."
-    };
-  }
-}
-
-// Summarize multiple files in batches
-async function summarizeFiles(
-  filePaths: string[],
-  rootDir: string,
-  llm: LLM,
-  batchSize: number = DEFAULT_BATCH_SIZE,
-  options?: SummaryOptions
-): Promise<FileSummary[]> {
-  const allSummaries: FileSummary[] = [];
-  
-  // Process files in batches
-  for (let i = 0; i < filePaths.length; i += batchSize) {
-    const batch = filePaths.slice(i, i + batchSize);
-    
-    console.log(`Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(filePaths.length / batchSize)} (${i + 1}-${Math.min(i + batchSize, filePaths.length)} of ${filePaths.length} files)`);
-    
-    const batchPromises = batch.map(filePath => {
-      console.log(`  Summarizing: ${path.relative(rootDir, filePath)}`);
-      return summarizeFile(filePath, rootDir, llm, MAX_FILE_SIZE_BYTES, options);
-    });
-    
-    const batchResults = await Promise.all(batchPromises);
-    allSummaries.push(...batchResults);
-  }
-  
-  return allSummaries;
-}
-
-// Write summaries to output file
-async function writeSummariesToFile(
-  summaries: FileSummary[],
-  outputPath: string
-): Promise<void> {
-  const content = summaries
-    .map(summary => `${summary.relativePath}\n${summary.summary}\n`)
-    .join('\n');
-  
-  await fs.promises.writeFile(outputPath, content, 'utf-8');
-  console.log(`Summaries written to ${outputPath}`);
-}
+// Import configuration
+import { 
+  getConfig, 
+  updateConfig, 
+  setApiKey, 
+  setPort, 
+  setSummaryOptions, 
+  resetConfig 
+} from './src/config/config.js';
 
 // Main function
 async function main() {
@@ -263,73 +36,165 @@ async function main() {
     program
       .name('code-summarizer')
       .description('A tool to summarize code files using Gemini Flash 2.0')
+      .version('1.0.0');
+    
+    // Default summarize command (original functionality)
+    program
+      .command('summarize')
+      .description('Summarize code files in a directory')
       .argument('[rootDir]', 'Root directory to scan', process.cwd())
       .argument('[outputFile]', 'Output file for summaries', 'summaries.txt')
       .option('-d, --detail <level>', 'Detail level (low, medium, high)', 'medium')
       .option('-l, --max-length <number>', 'Maximum summary length in characters', '500')
-      .helpOption('-h, --help', 'Display help information')
-      .parse(process.argv);
+      .action(async (rootDir, outputFile, options) => {
+        // Validate detail level
+        if (!['low', 'medium', 'high'].includes(options.detail)) {
+          throw new Error(`Invalid detail level: ${options.detail}. Use 'low', 'medium', or 'high'.`);
+        }
 
-    const options = program.opts();
-    // Extract positional arguments safely
-    const args = program.args;
-    const rootDir = args[0] || process.cwd();
-    const outputFile = args[1] || 'summaries.txt';
-    
-    // Validate detail level
-    if (!['low', 'medium', 'high'].includes(options.detail)) {
-      throw new Error(`Invalid detail level: ${options.detail}. Use 'low', 'medium', or 'high'.`);
-    }
+        // Validate max length
+        const maxLength = parseInt(options.maxLength);
+        if (isNaN(maxLength) || maxLength <= 0) {
+          throw new Error(`Invalid max length: ${options.maxLength}. Use a positive number.`);
+        }
 
-    // Validate max length
-    const maxLength = parseInt(options.maxLength);
-    if (isNaN(maxLength) || maxLength <= 0) {
-      throw new Error(`Invalid max length: ${options.maxLength}. Use a positive number.`);
+        // Validate the root directory
+        if (!require('fs').existsSync(rootDir) || !require('fs').statSync(rootDir).isDirectory()) {
+          throw new Error(`Invalid directory: ${rootDir}`);
+        }
+        
+        console.log(`Scanning directory: ${rootDir}`);
+        console.log(`Output file: ${outputFile}`);
+        console.log(`Detail level: ${options.detail}`);
+        console.log(`Max length: ${maxLength}`);
+        
+        // Get config for API key
+        const config = getConfig();
+        const apiKey = config.apiKey || process.env.GOOGLE_API_KEY;
+        
+        if (!apiKey) {
+          throw new Error('API key not set. Use the "config set --api-key <key>" command or set GOOGLE_API_KEY in .env file.');
+        }
+        
+        // Initialize the LLM
+        const llm = new GeminiLLM(apiKey);
+        
+        // Find all code files
+        console.log('Finding code files...');
+        const codeFiles = await findCodeFiles(rootDir);
+        console.log(`Found ${codeFiles.length} code files to process`);
+        
+        if (codeFiles.length === 0) {
+          console.log('No code files found to summarize.');
+          return;
+        }
+        
+        // Create summary options
+        const summaryOptions: SummaryOptions = {
+          detailLevel: options.detail as 'low' | 'medium' | 'high',
+          maxLength: maxLength
+        };
+        
+        // Summarize the files
+        console.log('Generating summaries...');
+        const summaries = await summarizeFiles(codeFiles, rootDir, llm, 5, summaryOptions);
+        
+        // Write summaries to the output file
+        await writeSummariesToFile(summaries, outputFile);
+        
+        console.log('Code summarization completed successfully!');
+      });
+      
+    // MCP server command
+    program
+      .command('server')
+      .description('Start the MCP server')
+      .action(async () => {
+        await startServer();
+      });
+      
+    // Configuration commands
+    const configCommand = program
+      .command('config')
+      .description('Manage configuration settings');
+      
+    configCommand
+      .command('show')
+      .description('Show current configuration')
+      .action(() => {
+        const config = getConfig();
+        console.log(JSON.stringify(config, null, 2));
+      });
+      
+    configCommand
+      .command('set')
+      .description('Set configuration options')
+      .option('--api-key <key>', 'Set the Gemini API key')
+      .option('--port <port>', 'Set the MCP server port')
+      .option('--detail-level <level>', 'Set default detail level (low, medium, high)')
+      .option('--max-length <length>', 'Set default maximum summary length')
+      .action((options) => {
+        const updates: any = {};
+        
+        if (options.apiKey) {
+          updates.apiKey = options.apiKey;
+        }
+        
+        if (options.port) {
+          const port = parseInt(options.port);
+          if (isNaN(port) || port <= 0) {
+            throw new Error(`Invalid port: ${options.port}. Use a positive number.`);
+          }
+          updates.port = port;
+        }
+        
+        if (options.detailLevel) {
+          if (!['low', 'medium', 'high'].includes(options.detailLevel)) {
+            throw new Error(`Invalid detail level: ${options.detailLevel}. Use 'low', 'medium', or 'high'.`);
+          }
+          
+          updates.summaryOptions = {
+            ...getConfig().summaryOptions,
+            detailLevel: options.detailLevel
+          };
+        }
+        
+        if (options.maxLength) {
+          const maxLength = parseInt(options.maxLength);
+          if (isNaN(maxLength) || maxLength <= 0) {
+            throw new Error(`Invalid max length: ${options.maxLength}. Use a positive number.`);
+          }
+          
+          updates.summaryOptions = {
+            ...updates.summaryOptions || getConfig().summaryOptions,
+            maxLength
+          };
+        }
+        
+        // Update config
+        if (Object.keys(updates).length > 0) {
+          const newConfig = updateConfig(updates);
+          console.log('Configuration updated:');
+          console.log(JSON.stringify(newConfig, null, 2));
+        } else {
+          console.log('No configuration changes specified.');
+        }
+      });
+      
+    configCommand
+      .command('reset')
+      .description('Reset configuration to defaults')
+      .action(() => {
+        resetConfig();
+        console.log('Configuration reset to defaults.');
+      });
+      
+    program.parse(process.argv);
+    
+    // If no command is specified, show help
+    if (!process.argv.slice(2).length) {
+      program.outputHelp();
     }
-
-    // Validate the root directory
-    if (!fs.existsSync(rootDir) || !fs.statSync(rootDir).isDirectory()) {
-      throw new Error(`Invalid directory: ${rootDir}`);
-    }
-    
-    console.log(`Scanning directory: ${rootDir}`);
-    console.log(`Output file: ${outputFile}`);
-    console.log(`Detail level: ${options.detail}`);
-    console.log(`Max length: ${maxLength}`);
-    
-    // Check if API key is available
-    const apiKey = process.env.GOOGLE_API_KEY;
-    if (!apiKey) {
-      throw new Error('GOOGLE_API_KEY is not set in .env file');
-    }
-    
-    // Initialize the LLM
-    const llm = new GeminiLLM(apiKey);
-    
-    // Find all code files
-    console.log('Finding code files...');
-    const codeFiles = await findCodeFiles(rootDir);
-    console.log(`Found ${codeFiles.length} code files to process`);
-    
-    if (codeFiles.length === 0) {
-      console.log('No code files found to summarize.');
-      return;
-    }
-    
-    // Create summary options
-    const summaryOptions: SummaryOptions = {
-      detailLevel: options.detail as 'low' | 'medium' | 'high',
-      maxLength: maxLength
-    };
-    
-    // Summarize the files
-    console.log('Generating summaries...');
-    const summaries = await summarizeFiles(codeFiles, rootDir, llm, 5, summaryOptions);
-    
-    // Write summaries to the output file
-    await writeSummariesToFile(summaries, outputFile);
-    
-    console.log('Code summarization completed successfully!');
   } catch (error) {
     console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(1);
@@ -344,15 +209,17 @@ export {
   writeSummariesToFile,
   GeminiLLM,
   SummaryOptions,
-  extensionToLanguage,
-  skipDirectories,
-  LLM,
-  FileSummary,
   MAX_FILE_SIZE_BYTES,
   DEFAULT_BATCH_SIZE
 };
 
+// Re-export types and constants for backward compatibility with tests
+export { extensionToLanguage, skipDirectories } from './src/summarizer/types.js';
+export type { LLM } from './src/summarizer/llm.js';
+
 // Only run main when file is executed directly, not when imported
-if (require.main === module) {
+// For ESM we need to check if this is the main module
+const isMainModule = import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+if (isMainModule) {
   main();
 }

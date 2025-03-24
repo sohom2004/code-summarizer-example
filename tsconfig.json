@@ -9,8 +9,13 @@
     "forceConsistentCasingInFileNames": true,
     "outDir": "dist",
     "rootDir": ".",
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "noImplicitAny": false,
+    "typeRoots": ["./node_modules/@types", "./src/types"],
+    "paths": {
+      "@modelcontextprotocol/sdk": ["./node_modules/@modelcontextprotocol/sdk/dist/esm"]
+    }
   },
-  "include": ["*.ts", "src/**/*.ts", "__tests__/**/*.ts"],
+  "include": ["*.ts", "src/**/*.ts", "bin/**/*.ts", "__tests__/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }
