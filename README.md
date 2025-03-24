@@ -15,7 +15,6 @@ A command-line tool that summarizes code files in a given directory using Gemini
 ## Requirements
 
 - Node.js 18+
-- pnpm
 
 ## Installation
 
@@ -27,7 +26,7 @@ A command-line tool that summarizes code files in a given directory using Gemini
 
 2. Install dependencies:
    ```bash
-   pnpm install
+   npm install
    ```
 
 3. Create a `.env` file with your Google API key:
@@ -39,19 +38,19 @@ A command-line tool that summarizes code files in a given directory using Gemini
 
 ```bash
 # Summarize code in the current directory (output to summaries.txt)
-pnpm start
+npm start
 
 # Summarize code with specific detail level
-pnpm start --detail high
+npm start -- --detail high
 
 # Set maximum summary length
-pnpm start --max-length 1000
+npm start -- --max-length 1000
 
 # Specify both directory and output file with options
-pnpm start /path/to/codebase output.txt --detail low --max-length 500
+npm start -- /path/to/codebase output.txt --detail low --max-length 500
 
 # Show help
-pnpm start --help
+npm start -- --help
 ```
 
 ## Options
@@ -122,10 +121,10 @@ Next summary text here
 
 ```bash
 # Run all tests
-pnpm test
+npm test
 
 # Run tests with coverage
-pnpm test --coverage
+npm test -- --coverage
 ```
 
 ## Future Improvements
