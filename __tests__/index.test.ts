@@ -32,20 +32,21 @@ vi.mock('ai', () => ({
 }));
 
 // Mock ignore module
-vi.mock('ignore', () => {
-  return { 
-    default: () => ({
+vi.mock('ignore', () => ({
+  default: {
+    default: vi.fn(() => ({
       add: () => ({
         ignores: () => false
       })
-    })
-  };
-});
+    }))
+  }
+}));
 
 vi.mock('dotenv', () => ({
   default: {
     config: vi.fn()
-  }
+  },
+  config: vi.fn()
 }));
 
 // Import after mocking
@@ -59,9 +60,9 @@ import {
   extensionToLanguage,
   skipDirectories,
   LLM,
-  FileSummary,
   MAX_FILE_SIZE_BYTES
 } from '../index.js';
+import { FileSummary } from '../src/summarizer/types.js';
 
 describe('Code Summarizer', () => {
   beforeEach(() => {

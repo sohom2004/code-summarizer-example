@@ -1,5 +1,11 @@
 # Code Summarizer Development Guidelines
 
+## Commands
+- Basic summarization: `npm start -- summarize [directory] [output.txt] [options]`
+- Start MCP server: `npm start -- server`
+- Configure settings: `npm start -- config set --api-key <key>`
+- Show configuration: `npm start -- config show`
+
 ## Build and Test Commands
 - Build: `npm run build` (runs TypeScript compiler)
 - Run dev: `npm run dev` (executes the program with tsx)
@@ -30,6 +36,10 @@
 - Use descriptive, self-documenting names
 
 ### Project Structure
-- Core functionality in the main file
+- Core functionality in the `src/` directory:
+  - `src/summarizer/`: Core summarization functionality 
+  - `src/mcp/`: MCP server implementation
+  - `src/config/`: Configuration management
+- CLI implementation in the main `index.ts` file
 - Tests organized in `__tests__` directory with `.test.ts` extension
 - Mock data in `__mocks__` directory
