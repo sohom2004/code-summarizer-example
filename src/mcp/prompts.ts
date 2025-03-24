@@ -1,10 +1,9 @@
-import { McpPromptTemplate } from './mock-sdk.js';
 import { z } from 'zod';
 
 /**
  * Prompt template for code summarization
  */
-export const codeSummaryPrompt = new McpPromptTemplate({
+export const codeSummaryPrompt = {
   name: 'code_summary',
   description: 'Prompt template for generating code summaries',
   schema: z.object({
@@ -15,7 +14,9 @@ export const codeSummaryPrompt = new McpPromptTemplate({
     maxLength: z.number().int().positive().default(500)
       .describe('Maximum length in characters for the summary')
   }),
-  render: ({ code, language, detailLevel, maxLength }) => {
+  render: (args) => {
+    const { code, language, detailLevel, maxLength } = args;
+    
     // Customize prompt based on detail level
     const detailPromptMap = {
       'low': 'Keep it very brief, focusing only on the main purpose.',
@@ -25,18 +26,26 @@ export const codeSummaryPrompt = new McpPromptTemplate({
     
     const detailPrompt = detailPromptMap[detailLevel];
     
-    return `Provide an overview summary of the code in this ${language} file.
+    return {
+      messages: [{
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Provide an overview summary of the code in this ${language} file.
 ${detailPrompt}
 Keep the summary under ${maxLength} characters.
 
-${code}`;
+${code}`
+        }
+      }]
+    };
   }
-});
+};
 
 /**
  * Prompt template for directory summarization
  */
-export const directorySummaryPrompt = new McpPromptTemplate({
+export const directorySummaryPrompt = {
   name: 'directory_summary',
   description: 'Prompt template for summarizing a directory of code files',
   schema: z.object({
@@ -46,15 +55,25 @@ export const directorySummaryPrompt = new McpPromptTemplate({
     })).describe('List of file summaries in the directory'),
     directoryPath: z.string().describe('Path to the directory being summarized')
   }),
-  render: ({ fileSummaries, directoryPath }) => {
+  render: (args) => {
+    const { fileSummaries, directoryPath } = args;
+    
     const summariesList = fileSummaries
       .map(file => `File: ${file.path}\nSummary: ${file.summary}`)
       .join('\n\n');
     
-    return `Provide a high-level overview of the codebase in the directory ${directoryPath} based on the following file summaries:
+    return {
+      messages: [{
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `Provide a high-level overview of the codebase in the directory ${directoryPath} based on the following file summaries:
 
 ${summariesList}
 
-Analyze the purpose, structure, and relationships between components. Identify key patterns, architecture, and highlight important files or modules.`;
+Analyze the purpose, structure, and relationships between components. Identify key patterns, architecture, and highlight important files or modules.`
+        }
+      }]
+    };
   }
-});
+};

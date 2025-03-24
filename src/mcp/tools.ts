@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { McpTool } from './mock-sdk.js';
 import { z } from 'zod';
 
 import { getSingleFileSummary, summarizeDirectory } from '../summarizer/summarize.js';
@@ -11,7 +10,7 @@ import { extensionToLanguage } from '../summarizer/types.js';
 /**
  * Tool to summarize a single file
  */
-export const summarizeFileTool = new McpTool({
+export const summarizeFileTool = {
   name: 'summarize_file',
   description: 'Summarize a single code file with optional configuration',
   schema: z.object({
@@ -74,12 +73,12 @@ export const summarizeFileTool = new McpTool({
       throw new Error(`Error summarizing file: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-});
+};
 
 /**
  * Tool to summarize a directory of code files
  */
-export const summarizeDirectoryTool = new McpTool({
+export const summarizeDirectoryTool = {
   name: 'summarize_directory',
   description: 'Summarize all code files in a directory',
   schema: z.object({
@@ -143,12 +142,12 @@ export const summarizeDirectoryTool = new McpTool({
       throw new Error(`Error summarizing directory: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-});
+};
 
 /**
  * Tool to configure the application
  */
-export const setConfigTool = new McpTool({
+export const setConfigTool = {
   name: 'set_config',
   description: 'Update configuration settings',
   schema: z.object({
@@ -203,4 +202,4 @@ export const setConfigTool = new McpTool({
       throw new Error(`Error updating configuration: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-});
+};
