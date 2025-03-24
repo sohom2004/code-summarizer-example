@@ -2,10 +2,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import dotenv from 'dotenv';
-import { GoogleGenerativeAI } from '@ai-sdk/google-generative-ai';
-import { generateText } from 'ai';
-import ignore from 'ignore';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Command } from 'commander';
+
+// Import ignore with require to resolve TypeScript issues
+// @ts-ignore
+const ignoreLib = require('ignore');
 
 // Load environment variables
 dotenv.config();
@@ -52,18 +54,12 @@ Keep the summary under ${summaryOptions.maxLength} characters.
 
 ${code}`;
       
-      // Type-safe implementation of AI SDK
-      const googleAI = GoogleGenerativeAI({
-        apiKey: this.apiKey,
-      });
+      // Initialize the Google Generative AI client
+      const genAI = new GoogleGenerativeAI(this.apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
       
-      const result = await generateText({
-        model: googleAI('gemini-2.0-flash-exp'),
-        prompt
-      });
-
-      // Validate and sanitize result
-      return typeof result === 'string' ? result : "Failed to generate summary.";
+      const result = await model.generateContent(prompt);
+      return result.response.text() || "Failed to generate summary.";
     } catch (error) {
       console.error(`Error summarizing with Gemini: ${error instanceof Error ? error.message : String(error)}`);
       return "Failed to generate summary.";
@@ -124,12 +120,12 @@ const skipDirectories = new Set([
 // Find all code files in a directory
 async function findCodeFiles(rootDir: string): Promise<string[]> {
   // Check if .gitignore exists
-  let gitignoreFilter: ReturnType<typeof ignore> | null = null;
+  let gitignoreFilter: any = null;
   const gitignorePath = path.join(rootDir, '.gitignore');
   
   if (fs.existsSync(gitignorePath)) {
     const gitignoreContent = fs.readFileSync(gitignorePath, 'utf-8');
-    gitignoreFilter = ignore().add(gitignoreContent);
+    gitignoreFilter = ignoreLib().add(gitignoreContent);
   }
   
   const allFiles: string[] = [];
