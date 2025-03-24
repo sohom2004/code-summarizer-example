@@ -17,28 +17,8 @@ globalThis.createTestServer = () => {
   });
 };
 
-// Create test environment for file operations
-vi.mock('fs', async () => {
-  const actual = await vi.importActual('fs');
-  return {
-    ...actual,
-    // Add helper functions for tests if needed, but use real implementations by default
-    existsSync: vi.fn((path: string) => {
-      // Default to true for tests unless explicitly mocked
-      return true;
-    }),
-    promises: {
-      readFile: vi.fn(async (path: string) => {
-        // Return a simple test file for most paths
-        return 'function test() { return "test"; }';
-      }),
-      writeFile: vi.fn(),
-      // Add other fs.promises methods as needed
-      stat: vi.fn().mockResolvedValue({ size: 1000, isDirectory: () => false }),
-      readdir: vi.fn().mockResolvedValue([])
-    }
-  };
-});
+// We don't want to mock fs anymore, using the real filesystem instead
+// No vi.mock('fs') call
 
 // Setup logger silencing for tests
 console.log = vi.fn();

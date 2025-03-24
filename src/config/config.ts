@@ -19,30 +19,55 @@ class ConfigStore {
   
   private load(): ConfigType {
     try {
+      // Always prioritize environment variables for sensitive data
+      const apiKey = process.env.GOOGLE_API_KEY || '';
+      
       if (fs.existsSync(this.filePath)) {
         const content = fs.readFileSync(this.filePath, 'utf-8');
-        return JSON.parse(content);
+        const fileConfig = JSON.parse(content);
+        
+        // Don't load API key from file if env var exists
+        return {
+          ...fileConfig,
+          apiKey: apiKey || fileConfig.apiKey || defaultConfig.apiKey
+        };
       }
+      
+      // If no file, use default with environment variables
+      return {
+        ...defaultConfig,
+        apiKey
+      };
     } catch (error) {
       console.error(`Error loading config from ${this.filePath}:`, error);
+      return {
+        ...defaultConfig,
+        apiKey: process.env.GOOGLE_API_KEY || defaultConfig.apiKey
+      };
     }
-    
-    // If no file or error, return defaults
-    return {
-      ...defaultConfig,
-      apiKey: process.env.GOOGLE_API_KEY || defaultConfig.apiKey
-    };
   }
   
   save(): void {
     try {
-      fs.writeFileSync(this.filePath, JSON.stringify(this.data, null, 2));
+      // Create a sanitized version for storage (without sensitive data)
+      const storageData = { ...this.data };
+      
+      // Only write API key to file if not available as env var
+      if (process.env.GOOGLE_API_KEY) {
+        storageData.apiKey = ''; // Don't save actual API key to file when using env var
+      }
+      
+      fs.writeFileSync(this.filePath, JSON.stringify(storageData, null, 2));
     } catch (error) {
       console.error(`Error saving config to ${this.filePath}:`, error);
     }
   }
   
   get store(): ConfigType {
+    // Always get the most recent environment variable
+    if (process.env.GOOGLE_API_KEY) {
+      this.data.apiKey = process.env.GOOGLE_API_KEY;
+    }
     return this.data;
   }
   
@@ -86,9 +111,22 @@ export function updateConfig(config: Partial<ConfigType>): ConfigType {
 }
 
 /**
- * Set API key
+ * Validate API key format
+ * Returns true if valid, false if invalid
+ */
+export function validateApiKey(apiKey: string): boolean {
+  // Basic validation - adjust based on your API key format
+  return /^[A-Za-z0-9_-]{10,}$/.test(apiKey);
+}
+
+/**
+ * Set API key with validation
+ * @throws Error if API key is invalid
  */
 export function setApiKey(apiKey: string): void {
+  if (!validateApiKey(apiKey)) {
+    throw new Error('Invalid API key format');
+  }
   updateConfig({ apiKey });
 }
 
