@@ -1,7 +1,8 @@
 // Import from the real MCP SDK
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { getConfig, updateConfig } from '../config/config.js';
+import { getConfig, updateConfig, validateApiKey } from '../config/config.js';
 import express from 'express';
+import cors from 'cors';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { z } from 'zod';
 
@@ -15,6 +16,21 @@ import { GeminiLLM } from '../summarizer/llm.js';
 import { extensionToLanguage, SummaryOptions, MAX_FILE_SIZE_BYTES } from '../summarizer/types.js';
 import * as fs from 'fs';
 import * as path from 'path';
+
+// Authentication middleware
+function authMiddleware(req, res, next) {
+  const apiKey = req.headers['x-api-key'];
+  const config = getConfig();
+  
+  // Check if API key is provided and valid
+  if (!apiKey || apiKey !== config.apiKey || !validateApiKey(apiKey.toString())) {
+    return res.status(401).json({
+      error: 'Unauthorized - Invalid or missing API key'
+    });
+  }
+  
+  next();
+}
 
 /**
  * Create and configure the MCP server
@@ -332,7 +348,59 @@ export async function startServer(): Promise<void> {
     
     // Create Express app for HTTP transport
     const app = express();
+    
+    // Add CORS configuration
+    const corsOptions = {
+      origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : 'http://localhost:3000',
+      methods: ['GET', 'POST'],
+      allowedHeaders: ['Content-Type', 'x-api-key'],
+      maxAge: 86400 // 24 hours
+    };
+    app.use(cors(corsOptions));
+    
+    // Request parsing
     app.use(express.json());
+    
+    // Rate limiting - simple implementation
+    const requestCounts = new Map<string, { count: number, resetTime: number }>();
+    app.use((req, res, next) => {
+      const ip = req.ip || 'unknown';
+      const now = Date.now();
+      const windowMs = 60 * 1000; // 1 minute window
+      const maxRequests = 60; // 60 requests per minute
+      
+      // Reset count if window expired
+      if (!requestCounts.has(ip) || (requestCounts.get(ip) && requestCounts.get(ip)!.resetTime < now)) {
+        requestCounts.set(ip, { count: 1, resetTime: now + windowMs });
+        return next();
+      }
+      
+      // Increment count
+      const record = requestCounts.get(ip);
+      if (record && record.count >= maxRequests) {
+        return res.status(429).json({ error: 'Too many requests, please try again later' });
+      }
+      
+      if (record) {
+        record.count++;
+      }
+      next();
+    });
+    
+    // Add authentication to all endpoints except health check
+    app.get('/health', (req, res) => {
+      res.status(200).json({ status: 'ok' });
+    });
+    
+    // All other routes require authentication
+    app.use((req, res, next) => {
+      // Skip auth for health check route
+      if (req.path === '/health') {
+        return next();
+      }
+      
+      authMiddleware(req, res, next);
+    });
     
     // Set up SSE endpoint
     app.get('/sse', async (req, res) => {
@@ -356,6 +424,7 @@ export async function startServer(): Promise<void> {
     const httpServer = app.listen(config.port, () => {
       console.log(`🚀 MCP Server running at http://localhost:${config.port}`);
       console.log('Available endpoints:');
+      console.log(`- Health: http://localhost:${config.port}/health`);
       console.log(`- SSE: http://localhost:${config.port}/sse`);
       console.log(`- Messages: http://localhost:${config.port}/messages`);
     });
