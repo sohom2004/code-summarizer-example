@@ -2,6 +2,7 @@
 import dotenv from 'dotenv';
 import { Command } from 'commander';
 import * as fs from 'fs';
+import * as path from 'path';
 
 // Load environment variables
 dotenv.config();
@@ -59,15 +60,10 @@ async function main() {
           throw new Error(`Invalid max length: ${options.maxLength}. Use a positive number.`);
         }
 
-        // Validate the root directory
-        if (!fs.existsSync(rootDir) || !fs.statSync(rootDir).isDirectory()) {
-          throw new Error(`Invalid directory: ${rootDir}`);
+        // Validate the path exists
+        if (!fs.existsSync(rootDir)) {
+          throw new Error(`Path not found: ${rootDir}`);
         }
-        
-        console.log(`Scanning directory: ${rootDir}`);
-        console.log(`Output file: ${outputFile}`);
-        console.log(`Detail level: ${options.detail}`);
-        console.log(`Max length: ${maxLength}`);
         
         // Get config for API key
         const config = getConfig();
@@ -80,30 +76,61 @@ async function main() {
         // Initialize the LLM
         const llm = new GeminiLLM(apiKey);
         
-        // Find all code files
-        console.log('Finding code files...');
-        const codeFiles = await findCodeFiles(rootDir);
-        console.log(`Found ${codeFiles.length} code files to process`);
-        
-        if (codeFiles.length === 0) {
-          console.log('No code files found to summarize.');
-          return;
-        }
-        
         // Create summary options
         const summaryOptions: SummaryOptions = {
           detailLevel: options.detail as 'low' | 'medium' | 'high',
           maxLength: maxLength
         };
         
-        // Summarize the files
-        console.log('Generating summaries...');
-        const summaries = await summarizeFiles(codeFiles, rootDir, llm, 5, summaryOptions);
+        // Check if the path is a file or directory
+        const isFile = fs.statSync(rootDir).isFile();
         
-        // Write summaries to the output file
-        await writeSummariesToFile(summaries, outputFile);
-        
-        console.log('Code summarization completed successfully!');
+        if (isFile) {
+          console.log(`Summarizing file: ${rootDir}`);
+          console.log(`Output file: ${outputFile}`);
+          console.log(`Detail level: ${options.detail}`);
+          console.log(`Max length: ${maxLength}`);
+          
+          // Import the getSingleFileSummary function dynamically
+          const { getSingleFileSummary } = await import('./src/summarizer/summarize.js');
+          
+          // Summarize the single file
+          const summary = await getSingleFileSummary(rootDir, llm, summaryOptions);
+          
+          // Write the summary to the output file
+          const fileSummary = {
+            relativePath: path.basename(rootDir),
+            summary
+          };
+          
+          await writeSummariesToFile([fileSummary], outputFile);
+          console.log('File summary written to', outputFile);
+        } else {
+          // It's a directory, follow original flow
+          console.log(`Scanning directory: ${rootDir}`);
+          console.log(`Output file: ${outputFile}`);
+          console.log(`Detail level: ${options.detail}`);
+          console.log(`Max length: ${maxLength}`);
+          
+          // Find all code files
+          console.log('Finding code files...');
+          const codeFiles = await findCodeFiles(rootDir);
+          console.log(`Found ${codeFiles.length} code files to process`);
+          
+          if (codeFiles.length === 0) {
+            console.log('No code files found to summarize.');
+            return;
+          }
+          
+          // Summarize the files
+          console.log('Generating summaries...');
+          const summaries = await summarizeFiles(codeFiles, rootDir, llm, 5, summaryOptions);
+          
+          // Write summaries to the output file
+          await writeSummariesToFile(summaries, outputFile);
+          
+          console.log('Code summarization completed successfully!');
+        }
       });
       
     // MCP server command
