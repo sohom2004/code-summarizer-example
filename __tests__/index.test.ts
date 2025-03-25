@@ -56,12 +56,12 @@ import {
   summarizeFiles, 
   writeSummariesToFile,
   GeminiLLM,
-  SummaryOptions,
   extensionToLanguage,
   skipDirectories,
   LLM,
   MAX_FILE_SIZE_BYTES
 } from '../index.js';
+import type { SummaryOptions } from '../index.js';
 import { FileSummary } from '../src/summarizer/types.js';
 
 describe('Code Summarizer', () => {

@@ -1,6 +1,7 @@
 // index.ts
 import dotenv from 'dotenv';
 import { Command } from 'commander';
+import * as fs from 'fs';
 
 // Load environment variables
 dotenv.config();
@@ -59,7 +60,7 @@ async function main() {
         }
 
         // Validate the root directory
-        if (!require('fs').existsSync(rootDir) || !require('fs').statSync(rootDir).isDirectory()) {
+        if (!fs.existsSync(rootDir) || !fs.statSync(rootDir).isDirectory()) {
           throw new Error(`Invalid directory: ${rootDir}`);
         }
         
@@ -208,13 +209,13 @@ export {
   summarizeFiles,
   writeSummariesToFile,
   GeminiLLM,
-  SummaryOptions,
   MAX_FILE_SIZE_BYTES,
   DEFAULT_BATCH_SIZE
 };
 
 // Re-export types and constants for backward compatibility with tests
 export { extensionToLanguage, skipDirectories } from './src/summarizer/types.js';
+export type { SummaryOptions } from './src/summarizer/types.js';
 export type { LLM } from './src/summarizer/llm.js';
 
 // Only run main when file is executed directly, not when imported
