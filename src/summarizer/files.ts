@@ -11,6 +11,7 @@ import {
   DEFAULT_BATCH_SIZE 
 } from './types.js';
 import { LLM } from './llm.js';
+import { LLMError } from '../error/index.js';
 
 // Find all code files in a directory
 export async function findCodeFiles(rootDir: string): Promise<string[]> {
@@ -68,37 +69,73 @@ export async function summarizeFile(
   maxFileSizeBytes: number = MAX_FILE_SIZE_BYTES,
   options?: SummaryOptions
 ): Promise<FileSummary> {
+  console.log(`[DEBUG] Starting summarization of file: ${filePath}`);
   try {
     // Check file size first
     const stats = await fs.promises.stat(filePath);
+    const fileSizeKB = (stats.size / 1024).toFixed(2);
+    console.log(`[DEBUG] File size for ${path.basename(filePath)}: ${fileSizeKB}KB`);
+    
     if (stats.size > maxFileSizeBytes) {
-      console.warn(`File ${filePath} is too large (${(stats.size / 1024).toFixed(2)}KB). Skipping.`);
+      console.warn(`File ${filePath} is too large (${fileSizeKB}KB). Skipping.`);
       return {
         relativePath: path.relative(rootDir, filePath),
         summary: "File is too large to summarize."
       };
     }
 
+    // Read file content
     const fileContent = await fs.promises.readFile(filePath, 'utf-8');
-    const ext = path.extname(filePath).toLowerCase();
+    const lineCount = fileContent.split('\n').length;
+    const charCount = fileContent.length;
+    // Rough token estimate (chars/4 is a common approximation)
+    const estimatedTokens = Math.ceil(charCount / 4);
     
-    // Use the mapped language name or fall back to extension without dot (if ext exists)
+    console.log(`[DEBUG] ${path.basename(filePath)} stats: ${lineCount} lines, ${charCount} chars, ~${estimatedTokens} tokens`);
+    
+    const ext = path.extname(filePath).toLowerCase();
     const language = ext in extensionToLanguage 
       ? extensionToLanguage[ext] 
       : (ext && ext.length > 1 ? ext.slice(1) : 'Unknown');
     
+    console.log(`[DEBUG] Sending ${path.basename(filePath)} to LLM as ${language} code`);
     const summary = await llm.summarize(fileContent, language, options);
     const relativePath = path.relative(rootDir, filePath);
     
+    console.log(`[DEBUG] Successfully summarized ${path.basename(filePath)}`);
     return {
       relativePath,
       summary
     };
   } catch (error) {
-    console.error(`Error processing file ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+    // Extract meaningful information from the error
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    const errorType = error.constructor.name;
+    
+    console.error(`[ERROR] Failed to summarize ${path.basename(filePath)}:`);
+    console.error(`  Type: ${errorType}`);
+    console.error(`  Message: ${errorMessage}`);
+    
+    // Only log stack trace at debug level to avoid console clutter
+    if (errorStack) {
+      console.debug(`  Stack: ${errorStack}`);
+    }
+    
+    // Determine specific error type for better user feedback
+    let summaryMessage = "Failed to summarize this file.";
+    
+    if (error instanceof LLMError && error.context?.isTokenLimitError) {
+      summaryMessage = "File content exceeds model token limit. Try using 'low' detail level.";
+    } else if (errorMessage.includes("timeout") || errorMessage.includes("network")) {
+      summaryMessage = "Network issue encountered while summarizing. Please try again.";
+    } else if (errorMessage.includes("rate limit") || errorMessage.includes("quota")) {
+      summaryMessage = "API rate limit reached. Please try again later.";
+    }
+    
     return {
       relativePath: path.relative(rootDir, filePath),
-      summary: "Failed to summarize this file."
+      summary: summaryMessage
     };
   }
 }

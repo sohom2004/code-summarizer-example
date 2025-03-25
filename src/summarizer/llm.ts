@@ -35,6 +35,7 @@ async function withRetry<T>(
   } catch (error) {
     // Check if we should retry
     if (retryCount >= retryOptions.maxRetries) {
+      console.log(`[RETRY] Maximum retries (${retryOptions.maxRetries}) reached, giving up.`);
       throw error; // Max retries reached, propagate the error
     }
     
@@ -43,21 +44,32 @@ async function withRetry<T>(
     
     if (error instanceof LLMError) {
       isRetryable = error.isRetryable;
+      console.log(`[RETRY] LLMError retryable status: ${isRetryable}`);
     } else if (error instanceof Error) {
       // Check for network errors or status code errors
       const statusCodeMatch = error.message.match(/status code (\d+)/i);
       if (statusCodeMatch) {
         const statusCode = parseInt(statusCodeMatch[1], 10);
         isRetryable = retryOptions.retryableStatusCodes.includes(statusCode);
+        console.log(`[RETRY] Status code ${statusCode}, retryable: ${isRetryable}`);
       } else {
         // Network errors are generally retryable
-        isRetryable = error.message.includes('network') || 
-                      error.message.includes('timeout') ||
-                      error.message.includes('connection');
+        const isNetworkError = error.message.includes('network') || 
+                          error.message.includes('timeout') ||
+                          error.message.includes('connection');
+        
+        // Content/token errors are not retryable
+        const isContentError = error.message.includes('exceeds maximum') ||
+                          error.message.includes('too large') ||
+                          error.message.includes('token limit');
+        
+        isRetryable = isNetworkError && !isContentError;
+        console.log(`[RETRY] Error type: ${isNetworkError ? 'Network' : (isContentError ? 'Content' : 'Other')}, retryable: ${isRetryable}`);
       }
     }
     
     if (!isRetryable) {
+      console.log(`[RETRY] Error not retryable, propagating.`);
       throw error; // Not retryable, propagate the error
     }
     
@@ -71,7 +83,7 @@ async function withRetry<T>(
     const delayWithJitter = Math.floor(delay * jitter);
     
     // Log retry attempt
-    console.warn(`Retrying LLM call (${retryCount + 1}/${retryOptions.maxRetries}) after ${delayWithJitter}ms delay`);
+    console.warn(`[RETRY] Retrying LLM call (${retryCount + 1}/${retryOptions.maxRetries}) after ${delayWithJitter}ms delay`);
     
     // Wait and retry
     await new Promise(resolve => setTimeout(resolve, delayWithJitter));
@@ -118,30 +130,70 @@ Keep the summary under ${summaryOptions.maxLength} characters.
 
 ${code}`;
       
-      // Log basic info about the request
+      // Calculate token estimate (approximate)
+      const totalChars = prompt.length;
+      const estimatedTokens = Math.ceil(totalChars / 4);
+      
       console.log(`[${requestId}] Summarizing ${language} code, detail level: ${summaryOptions.detailLevel}`);
+      console.log(`[${requestId}] Estimated prompt tokens: ~${estimatedTokens}`);
+      
+      // Check if we're likely approaching token limits (32k is common for many models)
+      if (estimatedTokens > 30000) {
+        console.warn(`[${requestId}] WARNING: Prompt may exceed token limits (~${estimatedTokens} tokens)`);
+      }
       
       // Use retry mechanism for the actual API call
       return await withRetry(async () => {
+        console.log(`[${requestId}] Initializing Gemini API call`);
         // Initialize the Google Generative AI client
         const genAI = new GoogleGenerativeAI(this.apiKey);
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         
         const startTime = Date.now();
+        console.log(`[${requestId}] Sending request to Gemini API`);
+        
         const result = await model.generateContent(prompt);
         const elapsed = Date.now() - startTime;
         
-        console.log(`[${requestId}] LLM response received in ${elapsed}ms`);
+        console.log(`[${requestId}] Gemini response received in ${elapsed}ms`);
         
-        return result.response.text() || "Failed to generate summary.";
+        // Check if response is empty or malformed
+        const responseText = result.response.text();
+        if (!responseText) {
+          console.warn(`[${requestId}] Received empty response from Gemini API`);
+          return "Failed to generate summary.";
+        }
+        
+        return responseText;
       }, this.retryOptions);
     } catch (error) {
-      // Convert to LLMError and rethrow
-      console.error(`[${requestId}] Error summarizing with Gemini: ${error instanceof Error ? error.message : String(error)}`);
+      // Extract API-specific error information if available
+      const errorDetails = error.response?.data || {};
+      const statusCode = error.response?.status;
+      
+      console.error(`[${requestId}] Error summarizing with Gemini:`);
+      console.error(`  Message: ${error instanceof Error ? error.message : String(error)}`);
+      
+      if (statusCode) {
+        console.error(`  Status: ${statusCode}`);
+      }
+      
+      if (error.response) {
+        console.error(`  Response: ${JSON.stringify(errorDetails)}`);
+      }
+      
+      // Determine if this is a token limit error
+      const isTokenLimitError = (error instanceof Error && 
+        (error.message.includes('exceeds maximum') || 
+         error.message.includes('too large') ||
+         error.message.includes('token limit')));
       
       throw new LLMError(
         `Failed to generate summary: ${error instanceof Error ? error.message : String(error)}`,
-        { context: { language, requestId } }
+        { 
+          isRetryable: !isTokenLimitError, // Don't retry token limit errors
+          context: { language, requestId, isTokenLimitError } 
+        }
       );
     }
   }

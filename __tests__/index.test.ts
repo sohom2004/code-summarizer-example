@@ -61,6 +61,7 @@ import {
   LLM,
   MAX_FILE_SIZE_BYTES
 } from '../index.js';
+import { LLMError } from '../src/error/index.js';
 import type { SummaryOptions } from '../index.js';
 import { FileSummary } from '../src/summarizer/types.js';
 
@@ -203,6 +204,25 @@ describe('Code Summarizer', () => {
       await summarizeFile('/test/small-file.js', '/test', llm, MAX_FILE_SIZE_BYTES, options);
       
       expect(llm.summarize).toHaveBeenCalledWith('const test = 123;', 'JavaScript', options);
+    });
+    
+    it('should handle token limit exceeded errors gracefully', async () => {
+      (fsPromises.stat as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ size: 100 * 1024 });
+      (fsPromises.readFile as unknown as ReturnType<typeof vi.fn>).mockResolvedValue('const test = 123;');
+      
+      const llm: LLM = {
+        summarize: vi.fn().mockRejectedValue(
+          new LLMError("Failed to generate summary: prompt exceeds maximum length", {
+            context: { isTokenLimitError: true },
+            isRetryable: false
+          })
+        )
+      };
+      
+      const result = await summarizeFile('/test/types.ts', '/test', llm);
+      
+      expect(llm.summarize).toHaveBeenCalledWith('const test = 123;', 'TypeScript', undefined);
+      expect(result.summary).toContain('token limit');
     });
   });
 
