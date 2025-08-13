@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc",
     "start": "tsx index.ts",
-    "dev": "tsx index.ts",
+    "dev": "tsx index.ts server",
     "test": "vitest run",
     "test:setup": "tsx src/test-setup.ts"
   },
