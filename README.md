@@ -1,6 +1,8 @@
-# Code Summarizer
+# Code Summarizer (Python Version)
 
-A command-line tool that summarizes code files in a given directory using Gemini Flash 2.0. Now with MCP server support for integration with LLM tools!
+A Python command-line tool that summarizes code files using Gemini Flash 2.0, with MCP server support for integration with AI agents like Claude, Cursor, and Cline!
+
+This Python version is designed to help you learn MCP servers and agentic AI concepts with clear, well-commented code.
 
 ## Features
 
@@ -11,15 +13,17 @@ A command-line tool that summarizes code files in a given directory using Gemini
 - Outputs summaries to a text file
 - Configurable detail level and summary length
 - MCP server for integration with Claude Desktop and other LLM tools
-- Modular design for easy integration into other applications
-- Secure API key management
-- Authentication for MCP server endpoints
-- Retry mechanism with exponential backoff for LLM calls
-- Rate limiting to prevent abuse
+- **Educational Focus**: Well-commented code explaining MCP and agentic AI concepts
+- **Async/Await Patterns**: Modern Python async programming for I/O operations
+- **Modular Architecture**: Clear separation of concerns for maintainability
+- **Robust Error Handling**: Comprehensive error categorization and recovery
+- **Retry Logic**: Exponential backoff with jitter for API resilience
+- **Type Hints**: Full type annotations for better code quality
 
 ## Requirements
 
-- Node.js 18+
+- Python 3.8+
+- pip (Python package manager)
 
 ## Installation
 
@@ -31,7 +35,7 @@ A command-line tool that summarizes code files in a given directory using Gemini
 
 2. Install dependencies:
    ```bash
-   npm install
+   pip install -r requirements.txt
    ```
 
 3. Create a `.env` file with your Google API key:
@@ -39,10 +43,30 @@ A command-line tool that summarizes code files in a given directory using Gemini
    GOOGLE_API_KEY=your_api_key_here
    ```
 
-4. Build the project:
-   ```bash
-   npm run build
-   ```
+## Learning MCP and Agentic AI Concepts
+
+This codebase is structured to help you understand key concepts:
+
+### 1. **MCP Server Architecture** (`src/mcp/server.py`)
+- **Resources**: Data that AI agents can access (code files, summaries)
+- **Tools**: Functions that AI agents can call (summarize, configure)
+- **Prompts**: Templates that help agents use your tools effectively
+
+### 2. **Agentic AI Patterns** (`src/summarizer/`)
+- **LLM Integration**: How to work with language models robustly
+- **Retry Logic**: Handling transient failures with exponential backoff
+- **Error Categorization**: Distinguishing retryable vs non-retryable errors
+- **Token Management**: Dealing with context length limits
+
+### 3. **Async Programming** (Throughout)
+- **Concurrent Processing**: Handling multiple files simultaneously
+- **I/O Operations**: Non-blocking file and network operations
+- **Batch Processing**: Managing API rate limits effectively
+
+### 4. **Configuration Management** (`src/config/`)
+- **Environment Variables**: Secure handling of API keys
+- **Validation**: Using Pydantic for robust configuration
+- **Hierarchical Config**: Environment > File > Defaults
 
 ## MCP Server Setup and Integration
 
@@ -52,14 +76,14 @@ The code summarizer includes a Model Context Protocol (MCP) server that allows L
 
 ```bash
 # Start the MCP server
-npm start -- server
+python main.py server
 ```
 
 By default, the server runs on port 24312. You can change this in your configuration:
 
 ```bash
 # Set custom MCP server port
-npm start -- config set --port 8080
+python main.py config set --port 8080
 ```
 
 ### Connecting with Claude Desktop
@@ -72,8 +96,8 @@ npm start -- config set --port 8080
 ```json
 {
   "code-summarizer": {
-    "command": "npx",
-    "args": ["-y", "your-path-to-code-summarizer/bin/code-summarizer.js", "server"],
+    "command": "python",
+    "args": ["your-path-to-code-summarizer/main.py", "server"],
     "env": {
       "GOOGLE_API_KEY": "your_api_key_here"
     }
@@ -213,36 +237,33 @@ For other issues, check the server logs or open an issue on the GitHub repositor
 ### Command Line Interface
 
 ```bash
-# Default command (summarize)
-npm start -- summarize [directory] [output-file] [options]
+# Summarize current directory
+python main.py summarize
 
-# Summarize code in the current directory (output to summaries.txt)
-npm start -- summarize
+# Summarize specific directory with options
+python main.py summarize /path/to/code --detail high --max-length 1000
 
-# Summarize code with specific detail level and max length
-npm start -- summarize --detail high --max-length 1000
+# Start MCP server
+python main.py server
 
 # Show help
-npm start -- --help
+python main.py --help
 ```
 
 ### Configuration Management
 
 ```bash
 # Set your API key
-npm start -- config set --api-key "your-api-key" 
+python main.py config set --api-key "your-api-key" 
 
 # Set default detail level and max length
-npm start -- config set --detail-level high --max-length 1000
+python main.py config set --detail-level high --max-length 1000
 
 # Set MCP server port (default: 24312)
-npm start -- config set --port 8080
+python main.py config set --port 8080
 
 # Show current configuration
-npm start -- config show
-
-# Reset configuration to defaults
-npm start -- config reset
+python main.py config show
 ```
 
 ### API Authentication
@@ -252,6 +273,29 @@ When connecting to the MCP server, you need to include your API key in the reque
 ```
 x-api-key: your_api_key_here
 ```
+
+## Key Learning Points
+
+### Understanding MCP Resources
+Resources represent data that AI agents can access. In our implementation:
+- Code files are exposed as `file://` resources
+- Agents can list available files and read their contents
+- This allows agents to understand your codebase structure
+
+### Understanding MCP Tools
+Tools are functions that agents can call:
+- `summarize_file`: Process a single file
+- `summarize_directory`: Process multiple files
+- `configure`: Update settings
+
+Each tool has a JSON schema defining its parameters, making it self-documenting for AI agents.
+
+### Understanding MCP Prompts
+Prompts are templates that help agents use your tools effectively:
+- `analyze_codebase`: Template for comprehensive codebase analysis
+- `explain_file`: Template for detailed file explanations
+
+These guide agents on how to combine multiple tool calls for complex tasks.
 
 All endpoints (except `/health`) require authentication.
 
@@ -368,23 +412,19 @@ See `.env.example` for a template.
 ### Running Tests
 
 ```bash
-# Run all tests
-npm test
+# Run tests (when implemented)
+python -m pytest
 
-# Run tests with coverage
-npm test -- --coverage
-
-# Test MCP server setup
-npm run test:setup
+# Run with coverage
+python -m pytest --cov=src
 ```
 
 ## Future Improvements
 
 - Support for more file types
 - Support for alternative LLM providers
-- Integration with an Electron app for a GUI interface
+- Web interface using FastAPI
+- Integration with more AI agents
 - Enhanced MCP server capabilities
-- Advanced token usage tracking
-- OpenTelemetry-based observability
-- Enhanced audit logging capabilities
-- Secret scanning integration
+- Plugin system for custom processors
+- Real-time file watching and summarization

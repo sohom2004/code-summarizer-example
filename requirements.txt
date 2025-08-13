@@ -1,0 +1,11 @@
+# Core dependencies for the Python MCP server
+mcp>=1.0.0                    # Model Context Protocol SDK for Python
+google-generativeai>=0.3.0    # Google's Gemini AI client library
+python-dotenv>=1.0.0          # Environment variable management
+click>=8.0.0                  # Command-line interface framework
+pydantic>=2.0.0               # Data validation and settings management
+fastapi>=0.100.0              # Modern web framework for the HTTP server
+uvicorn>=0.20.0               # ASGI server for FastAPI
+httpx>=0.24.0                 # HTTP client for async requests
+aiofiles>=23.0.0              # Async file operations
+gitpython>=3.1.0              # Git repository handling (alternative to ignore package)

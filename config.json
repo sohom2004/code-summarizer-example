@@ -1,8 +1,8 @@
 {
   "apiKey": "",
   "port": 24312,
-  "summaryOptions": {
-    "detailLevel": "medium",
-    "maxLength": 500
+  "summary_options": {
+    "detail_level": "medium",
+    "max_length": 500
   }
 }

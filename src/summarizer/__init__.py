@@ -1,0 +1,1 @@
+"""Summarizer module for processing code files with LLMs."""
